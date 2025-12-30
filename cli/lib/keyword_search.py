@@ -1,8 +1,15 @@
-from .search_utils import DEFAULT_SEARCH_LIMIT, load_movies, load_stopwords
-import string
+from .search_utils import (
+    DEFAULT_SEARCH_LIMIT,
+    load_movies,
+    preprocess_input,
+    remove_punctuation_translate,
+    tokenize,
+)
+
+import pickle
+import os
 
 MOVIES = load_movies()
-STOPWORDS = load_stopwords()
 
 
 def search_command(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[dict]:
@@ -29,25 +36,56 @@ def search_command(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[dict]:
     return results
 
 
-def preprocess_input(input: str) -> list[str]:
-    results = remove_punctuation_translate(input.lower())
-    results = tokenize(results)
-    results = remove_stopwards(results)
-    return results
+def build_command():
+    index = InvertedIndex()
+    index.build(MOVIES)
+    index.save()
+    docs = index.get_documents("merida")
+
+    print(f"First document for token 'merida' = {docs[0]}")
 
 
-def remove_stopwards(input: list[str]) -> list[str]:
-    return list(set(input) - set(STOPWORDS))
+class InvertedIndex:
+    def __init__(self):
+        self.index = {}
+        self.docmap = {}
 
+    def __add_document(self, doc_id, text):
+        tokens = remove_punctuation_translate(text.lower())
+        tokens = tokenize(tokens)
 
-def remove_punctuation_translate(text: str) -> str:
-    translator = str.maketrans("", "", string.punctuation)
+        for token in tokens:
+            if token not in self.index:
+                self.index[token] = set()
 
-    return text.translate(translator)
+            self.index[token].add(doc_id)
 
+    def get_documents(self, term):
+        normalized_term = remove_punctuation_translate(term.lower())
+        if normalized_term in self.index:
+            list_of_numbers = list(self.index[normalized_term])
+            sorted_numbers = sorted(list_of_numbers)
+            return sorted_numbers
 
-def tokenize(text: str) -> list[str]:
-    tokens = text.split()
-    non_empty_tokens = [token for token in tokens if token]
+        return []
 
-    return list(set(non_empty_tokens))
+    def build(self, movies):
+        for m in movies:
+            id = m["id"]
+            text = f"{m['title']} {m['description']}"
+
+            self.docmap[id] = m
+            self.__add_document(id, text)
+
+    def save(self):
+        PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        CACHE_PATH = os.path.join(PROJECT_ROOT, "cache")
+
+        if not os.path.isdir(CACHE_PATH):
+            os.makedirs(CACHE_PATH)
+
+        with open(os.path.join(CACHE_PATH, "index.pkl"), "wb") as index_file:
+            pickle.dump(self.index, index_file)
+
+        with open(os.path.join(CACHE_PATH, "docmap.pkl"), "wb") as docmap_file:
+            pickle.dump(self.docmap, docmap_file)
