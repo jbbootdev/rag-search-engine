@@ -2,37 +2,34 @@ from .search_utils import (
     DEFAULT_SEARCH_LIMIT,
     load_movies,
     preprocess_input,
-    remove_punctuation_translate,
-    tokenize,
 )
 
+from collections import Counter
+import math
 import pickle
 import os
 
 MOVIES = load_movies()
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+CACHE_PATH = os.path.join(PROJECT_ROOT, "cache")
 
 
 def search_command(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[dict]:
     results = []
-
     query_tokens = preprocess_input(query)
+    index = InvertedIndex()
+    index.load()
 
-    for movie in MOVIES:
-        movie_matched = False
-        movie_tokens = preprocess_input(movie["title"])
-
-        for query_token in query_tokens:
-            for movie_token in movie_tokens:
-                if query_token in movie_token:
-                    movie_matched = True
-                    break
-            if movie_matched:
-                break
-
-        if movie_matched:
+    for token in query_tokens:
+        document_ids = index.get_documents(token)
+        for id in document_ids:
+            movie = index.docmap[id]
             results.append(movie)
-        if len(results) >= limit:
-            break
+            print(f"{movie['title']} ({movie['id']})")
+
+            if len(results) >= limit:
+                return results
+
     return results
 
 
@@ -40,34 +37,63 @@ def build_command():
     index = InvertedIndex()
     index.build(MOVIES)
     index.save()
-    docs = index.get_documents("merida")
 
-    print(f"First document for token 'merida' = {docs[0]}")
+
+def tf_command(doc_id: int, term: str) -> int:
+    idx = InvertedIndex()
+    idx.load()
+    return idx.get_tf(doc_id, term)
+
+
+def idf_command(term: str) -> float:
+    cleaned_term = preprocess_input(term)
+    index = InvertedIndex()
+    index.load()
+    total_doc_count = len(index.docmap)
+    term_match_doc_count = len(index.index[cleaned_term[0]])
+    print("total_doc_count: ", total_doc_count)
+    print("term_match_doc_count: ", term_match_doc_count)
+    return math.log((total_doc_count + 1) / (term_match_doc_count + 1))
 
 
 class InvertedIndex:
     def __init__(self):
         self.index = {}
         self.docmap = {}
+        self.term_frequencies = {}
 
     def __add_document(self, doc_id, text):
-        tokens = remove_punctuation_translate(text.lower())
-        tokens = tokenize(tokens)
-
+        tokens = preprocess_input(text.lower())
         for token in tokens:
+            if doc_id not in self.term_frequencies:
+                self.term_frequencies[doc_id] = Counter()
+
+            self.term_frequencies[doc_id][token] += 1
             if token not in self.index:
                 self.index[token] = set()
 
             self.index[token].add(doc_id)
 
     def get_documents(self, term):
-        normalized_term = remove_punctuation_translate(term.lower())
-        if normalized_term in self.index:
-            list_of_numbers = list(self.index[normalized_term])
+        key = term
+        if key in self.index:
+            list_of_numbers = list(self.index[key])
             sorted_numbers = sorted(list_of_numbers)
             return sorted_numbers
 
         return []
+
+    def get_tf(self, doc_id, term):
+        tokenized_term = preprocess_input(term.lower())
+
+        if len(tokenized_term) == 0:
+            return 0
+
+        if len(tokenized_term) > 1:
+            raise Exception("Invalid term")
+
+        results = self.term_frequencies.get(doc_id, Counter())
+        return results.get(tokenized_term[0], 0)
 
     def build(self, movies):
         for m in movies:
@@ -77,10 +103,29 @@ class InvertedIndex:
             self.docmap[id] = m
             self.__add_document(id, text)
 
-    def save(self):
-        PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        CACHE_PATH = os.path.join(PROJECT_ROOT, "cache")
+    def load(self):
+        file_path = os.path.join(CACHE_PATH, "index.pkl")
+        if os.path.exists(file_path):
+            with open(file_path, "rb") as f:
+                self.index = pickle.load(f)
+        else:
+            raise FileNotFoundError
 
+        docmap_file_path = os.path.join(CACHE_PATH, "docmap.pkl")
+        if os.path.exists(docmap_file_path):
+            with open(docmap_file_path, "rb") as docmap_file:
+                self.docmap = pickle.load(docmap_file)
+        else:
+            raise FileNotFoundError
+
+        term_frequency_file_path = os.path.join(CACHE_PATH, "term_frequencies.pkl")
+        if os.path.exists(term_frequency_file_path):
+            with open(term_frequency_file_path, "rb") as term_frequencies_file:
+                self.term_frequencies = pickle.load(term_frequencies_file)
+        else:
+            raise FileNotFoundError
+
+    def save(self):
         if not os.path.isdir(CACHE_PATH):
             os.makedirs(CACHE_PATH)
 
@@ -89,3 +134,8 @@ class InvertedIndex:
 
         with open(os.path.join(CACHE_PATH, "docmap.pkl"), "wb") as docmap_file:
             pickle.dump(self.docmap, docmap_file)
+
+        with open(
+            os.path.join(CACHE_PATH, "term_frequencies.pkl"), "wb"
+        ) as term_frequencies_file:
+            pickle.dump(self.term_frequencies, term_frequencies_file)

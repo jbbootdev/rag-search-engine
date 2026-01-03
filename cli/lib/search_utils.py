@@ -3,6 +3,7 @@ import os
 import string
 
 from nltk.stem import PorterStemmer
+from nltk.stem.snowball import stopwords
 
 DEFAULT_SEARCH_LIMIT = 5
 
@@ -38,7 +39,8 @@ def perform_stemming(inputs: list[str]) -> list[str]:
 
 
 def remove_stopwards(input: list[str]) -> list[str]:
-    return list(set(input) - set(load_stopwords()))
+    stopwords = set(load_stopwords())
+    return [word for word in input if word not in stopwords]
 
 
 def remove_punctuation_translate(text: str) -> str:
@@ -51,4 +53,4 @@ def tokenize(text: str) -> list[str]:
     tokens = text.split()
     non_empty_tokens = [token for token in tokens if token]
 
-    return list(set(non_empty_tokens))
+    return non_empty_tokens
