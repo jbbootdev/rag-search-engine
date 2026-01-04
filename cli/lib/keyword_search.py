@@ -34,9 +34,9 @@ def search_command(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[dict]:
 
 
 def build_command():
-    index = InvertedIndex()
-    index.build(MOVIES)
-    index.save()
+    idx = InvertedIndex()
+    idx.build(MOVIES)
+    idx.save()
 
 
 def tf_command(doc_id: int, term: str) -> int:
@@ -47,13 +47,23 @@ def tf_command(doc_id: int, term: str) -> int:
 
 def idf_command(term: str) -> float:
     cleaned_term = preprocess_input(term)
-    index = InvertedIndex()
-    index.load()
-    total_doc_count = len(index.docmap)
-    term_match_doc_count = len(index.index[cleaned_term[0]])
+    idx = InvertedIndex()
+    idx.load()
+    total_doc_count = len(idx.docmap)
+    term_match_doc_count = len(idx.index[cleaned_term[0]])
     print("total_doc_count: ", total_doc_count)
     print("term_match_doc_count: ", term_match_doc_count)
     return math.log((total_doc_count + 1) / (term_match_doc_count + 1))
+
+
+def tfidf_command(doc_id: int, term: str) -> float:
+    idx = InvertedIndex()
+    idx.load
+
+    tf = tf_command(doc_id, term)
+    idf = idf_command(term)
+
+    return tf * idf
 
 
 class InvertedIndex:
