@@ -45,15 +45,19 @@ def tf_command(doc_id: int, term: str) -> int:
     return idx.get_tf(doc_id, term)
 
 
-def idf_command(term: str) -> float:
-    cleaned_term = preprocess_input(term)
+def bm25_idf_command(term: str) -> float:
+    cleaned_term = preprocess_input(term.lower())
     idx = InvertedIndex()
     idx.load()
     total_doc_count = len(idx.docmap)
     term_match_doc_count = len(idx.index[cleaned_term[0]])
-    print("total_doc_count: ", total_doc_count)
-    print("term_match_doc_count: ", term_match_doc_count)
-    return math.log((total_doc_count + 1) / (term_match_doc_count + 1))
+    return math.log((total_doc_count - term_match_doc_count + 0.5) / (term_match_doc_count + 0.5) + 1)
+
+def idf_command(term: str) -> float:
+    idx = InvertedIndex()
+    idx.load()
+    bm25_idf = inx.get_bm25_idf(term)
+    return bm25_idf
 
 
 def tfidf_command(doc_id: int, term: str) -> float:
@@ -92,6 +96,13 @@ class InvertedIndex:
             return sorted_numbers
 
         return []
+
+
+    def get_bm25_idf(self, term: str) -> float:
+        tokenized_term = preprocess_input(term)
+        total_doc_count = len(self.docmap)
+        term_match_doc_count = len(self.index[cleaned_term[0]])
+        return math.log((total_doc_count + 1) / (term_match_doc_count + 1))
 
     def get_tf(self, doc_id, term):
         tokenized_term = preprocess_input(term.lower())
